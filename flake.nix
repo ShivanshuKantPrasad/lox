@@ -1,21 +1,52 @@
 {
   inputs = {
-    naersk.url = "github:nix-community/naersk/master";
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = github:NixOS/nixpkgs/nixpkgs-unstable;
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    naersk.url = "github:nix-community/naersk";
   };
 
-  outputs = { self, nixpkgs, utils, naersk }:
-    utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-        naersk-lib = pkgs.callPackage naersk { };
-      in
-      {
-        defaultPackage = naersk-lib.buildPackage ./.;
-        devShell = with pkgs; mkShell {
-          buildInputs = [ rust-analyzer cargo rustc rustfmt pre-commit rustPackages.clippy ];
-          RUST_SRC_PATH = rustPlatform.rustLibSrc;
+  outputs = { self, rust-overlay, nixpkgs, naersk }:
+    let
+      program_name = "lox";
+      system = "x86_64-linux";
+      overlays = [ (import rust-overlay) ];
+      pkgs = import nixpkgs {
+        inherit overlays system;
+      };
+
+      rust-bin = pkgs.rust-bin.selectLatestNightlyWith
+        (toolchain: toolchain.default.override {
+          extensions = [ "rust-src" ];
+        });
+      naersk-lib = naersk.lib.${system}.override {
+        cargo = rust-bin;
+        rustc = rust-bin;
+      };
+
+      rust-dev-deps = with pkgs; [
+        rust-analyzer
+        rustfmt
+        lldb
+        cargo-geiger
+        renderdoc
+      ];
+      build-deps = with pkgs; [
+        pkgconfig
+        mold
+        clang
+        makeWrapper
+      ];
+      all_deps = build-deps ++ rust-dev-deps ++ [ rust-bin ];
+    in
+    {
+      devShell.${system} =
+        pkgs.mkShell {
+          buildInputs = all_deps;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath all_deps;
+          PROGRAM_NAME = program_name;
+          shellHook = ''
+            export CARGO_MANIFEST_DIR=$(pwd)
+          '';
         };
-      });
-}
+    };
+  }
