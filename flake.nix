@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs/nixpkgs-unstable;
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     rust-overlay.url = "github:oxalica/rust-overlay";
     naersk.url = "github:nix-community/naersk";
   };
@@ -26,17 +26,8 @@
       rust-dev-deps = with pkgs; [
         rust-analyzer
         rustfmt
-        lldb
-        cargo-geiger
-        renderdoc
       ];
-      build-deps = with pkgs; [
-        pkgconfig
-        mold
-        clang
-        makeWrapper
-      ];
-      all_deps = build-deps ++ rust-dev-deps ++ [ rust-bin ];
+      all_deps = rust-dev-deps ++ [ rust-bin ];
     in
     {
       devShell.${system} =
@@ -48,5 +39,10 @@
             export CARGO_MANIFEST_DIR=$(pwd)
           '';
         };
+      packages.${system}.default = naersk-lib.buildPackage {
+        src = ./.;
+        name = "lox";
+        inherit system;
+      };
     };
-  }
+}
