@@ -1,13 +1,12 @@
 mod scanner;
 mod token;
+mod error;
 
 use std::env;
 use std::fs;
-use std::io;
-use std::io::BufRead;
+use std::io::{self, stdout, BufRead, Write};
 use std::process::exit;
 use crate::scanner::Scanner;
-use crate::token::Token;
 
 fn main() {
     let args: Vec<_> = env::args().collect();
@@ -24,38 +23,35 @@ fn main() {
 
 fn run_file(file: &String) -> io::Result<()> {
     let code = fs::read_to_string(file)?;
-    run(code);
+    let _ = run(code);
     Ok(())
 }
 
 fn run_prompt() {
-    print!("> ");
     let stdin = io::stdin();
+    print!("> ");
+    let _ = stdout().flush();
     for line in stdin.lock().lines() {
         if let Ok(line) = line {
             if line.is_empty() {
                 break;
             }
-            run(line.to_string());
+            let _ = run(line);
         } else {
             break;
         }
+        print!("> ");
+        let _ = stdout().flush();
     }
 }
 
-fn run(code: String) {
+fn run(code: String) -> Result<(), error::LoxError> {
     let mut scanner = Scanner::new(code.as_str().chars().collect());
-    let tokens: Vec<Token> = scanner.scan_tokens();
+    let tokens = scanner.scan_tokens()?;
 
     for token in tokens {
         println!("{token:?}");
     }
-}
 
-fn error(line: u32, error: &str) {
-    report(line, "", error);
-}
-
-fn report(line: u32, loc: &str, error: &str) {
-    println!("[line ${line}] Error ${loc}: ${error}");
+    Ok(())
 }

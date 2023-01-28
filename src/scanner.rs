@@ -1,4 +1,4 @@
-use crate::error;
+use crate::error::LoxError;
 use crate::token::Token;
 
 #[derive()]
@@ -21,17 +21,30 @@ impl Scanner {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> Vec<Token> {
+    pub fn scan_tokens(&mut self) -> Result<&Vec<Token>, LoxError> {
+        let mut had_error: Option<LoxError> = None;
+
         while !self.is_at_end() {
             self.start = self.current;
-            self.token()
+            match self.token() {
+                Ok(_) => {}
+                Err(e) => {
+                    e.report("".to_string());
+                    had_error = Some(e);
+                }
+            }
         }
 
         self.add_token(Token::Eof);
-        self.tokens.clone()
+
+        if let Some(e) = had_error {
+            Err(e)
+        } else {
+            Ok(&self.tokens)
+        }
     }
 
-    fn token(&mut self) {
+    fn token(&mut self) -> Result<(), LoxError> {
         match self.advance() {
             '(' => self.add_token(Token::LeftParen),
             ')' => self.add_token(Token::RightParen),
@@ -73,55 +86,68 @@ impl Scanner {
             }
             '/' => {
                 if self.is_match('/') {
-                    while self.peek() != '\n' && !self.is_at_end() {
-                        self.advance();
+                    while let Some(ch) = self.peek() {
+                        if ch != '\n' {
+                            self.advance();
+                        } else {
+                            break;
+                        }
                     }
                 } else {
                     self.add_token(Token::Slash)
                 }
             }
             ' ' | '\r' | '\t' => (),
-            '"' => self.string(),
+            '"' => self.string()?,
             '\n' => self.line += 1,
             c if c.is_alphanumeric() || c == '_' => self.identifier(),
             c if c.is_digit(10) => self.number(),
-            x => unreachable!("Unexpected character. '{x} "),
+            x => {
+                return Err(LoxError::error(
+                    self.line,
+                    format!("Unexpected character. '{x} "),
+                ));
+            }
         }
+
+        Ok(())
     }
 
-    fn string(&mut self) {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
-                self.line += 1;
+    fn string(&mut self) -> Result<(), LoxError> {
+        while let Some(ch) = self.peek() {
+            match ch {
+                '"' => break,
+                '\n' => self.line += 1,
+                _ => {}
             }
             self.advance();
         }
 
         if self.is_at_end() {
-            error(self.line as u32, "Unterminated string.");
-            return;
+            return Err(LoxError::error(self.line, "Unterminated string.".to_string()));
         }
 
         self.advance();
 
         let value = String::from_iter(self.source[self.start + 1..self.current - 1].iter());
         self.add_token(Token::String { value });
+        Ok(())
     }
 
     fn identifier(&mut self) {
-        while self.peek().is_alphanumeric() {
+        while is_alphanumeric(self.peek()) {
             self.advance();
         }
 
         let name = String::from_iter(self.source[self.start..self.current].iter());
         match keyword(&name) {
             Some(token) => self.add_token(token),
-            None => self.add_token(Token::Identifier { name })
+            None => self.add_token(Token::Identifier { name }),
         }
     }
 
     fn add_token(&mut self, token: Token) {
-        &self.tokens.push(token);
+        let _ = &self.tokens.push(token);
     }
 
     fn is_at_end(&self) -> bool {
@@ -138,29 +164,28 @@ impl Scanner {
                 self.current += 1;
                 true
             }
-            _ => false
+            _ => false,
         }
     }
-    fn peek(&self) -> char {
-        if self.is_at_end() {
-            '\0'
-        } else {
-            *self.source.get(self.current).unwrap()
-        }
+    fn peek(&self) -> Option<char> {
+        self.source.get(self.current).copied()
     }
+
     fn number(&mut self) {
-        while self.peek().is_digit(10) {
+        while is_digit(self.peek()) {
             self.advance();
         }
 
-        if self.peek() == '.' && self.peek_next().is_digit(10) {
+        if self.peek() == Some('.') && self.peek_next().is_digit(10) {
             self.advance();
-            while self.peek().is_digit(10) {
+            while is_digit(self.peek()) {
                 self.advance();
             }
         }
 
-        let val = String::from_iter(self.source[self.start..self.current].iter()).parse::<f32>().unwrap();
+        let val = String::from_iter(self.source[self.start..self.current].iter())
+            .parse::<f32>()
+            .unwrap();
         self.add_token(Token::Number { val })
     }
     fn peek_next(&self) -> char {
@@ -190,6 +215,22 @@ fn keyword(text: &String) -> Option<Token> {
         "true" => Some(Token::True),
         "var" => Some(Token::Var),
         "while" => Some(Token::While),
-        _ => None
+        _ => None,
+    }
+}
+
+fn is_digit(ch: Option<char>) -> bool {
+    if let Some(ch) = ch {
+        ch.is_digit(10)
+    } else {
+        false
+    }
+}
+
+fn is_alphanumeric(ch: Option<char>) -> bool {
+    if let Some(ch) = ch {
+        ch.is_alphanumeric()
+    } else {
+        false
     }
 }
