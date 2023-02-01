@@ -1,12 +1,14 @@
+mod ast;
+mod error;
+mod expr;
 mod scanner;
 mod token;
-mod error;
 
+use crate::scanner::Scanner;
 use std::env;
 use std::fs;
 use std::io::{self, stdout, BufRead, Write};
 use std::process::exit;
-use crate::scanner::Scanner;
 
 fn main() {
     let args: Vec<_> = env::args().collect();
